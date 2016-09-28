@@ -454,13 +454,19 @@ func expandBootstrapActions(bootstrapActions []interface{}) []*emr.BootstrapActi
 func expandConfigures(input string) []*emr.Configuration {
 	configsOut := []*emr.Configuration{}
 	if strings.HasPrefix(input, "http") {
-		readHttpJson(input, &configsOut)
+		if err := readHttpJson(input, &configsOut); err != nil {
+			log.Printf("[ERR] Error reading HTTP JSON: %s", err)
+		}
 	} else if strings.HasSuffix(input, ".json") {
-		readLocalJson(input, &configsOut)
+		if err := readLocalJson(input, &configsOut); err != nil {
+			log.Printf("[ERR] Error reading local JSON: %s", err)
+		}
 	} else {
-		readBodyJson(input, &configsOut)
+		if err := readBodyJson(input, &configsOut); err != nil {
+			log.Printf("[ERR] Error reading body JSON: %s", err)
+		}
 	}
-	log.Printf("[DEBUG] Configures %v\n", configsOut)
+	log.Printf("[DEBUG] Expanded EMR Configurations %s", configsOut)
 
 	return configsOut
 }
