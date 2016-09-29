@@ -26,10 +26,12 @@ func resourceAwsEMRCluster() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"name": &schema.Schema{
 				Type:     schema.TypeString,
+				ForceNew: true,
 				Required: true,
 			},
 			"release_label": &schema.Schema{
 				Type:     schema.TypeString,
+				ForceNew: true,
 				Required: true,
 			},
 			"master_instance_type": &schema.Schema{
@@ -40,6 +42,7 @@ func resourceAwsEMRCluster() *schema.Resource {
 			"core_instance_type": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 				Computed: true,
 			},
 			"core_instance_count": &schema.Schema{
@@ -49,6 +52,7 @@ func resourceAwsEMRCluster() *schema.Resource {
 			},
 			"log_uri": &schema.Schema{
 				Type:     schema.TypeString,
+				ForceNew: true,
 				Optional: true,
 			},
 			"applications": &schema.Schema{
@@ -62,6 +66,7 @@ func resourceAwsEMRCluster() *schema.Resource {
 				Type:     schema.TypeList,
 				MaxItems: 1,
 				Optional: true,
+				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"key_name": &schema.Schema{
@@ -89,8 +94,7 @@ func resourceAwsEMRCluster() *schema.Resource {
 							Optional: true,
 						},
 						"instance_profile": &schema.Schema{
-							Type: schema.TypeString,
-							// TODO: should be ForceNew?
+							Type:     schema.TypeString,
 							Required: true,
 						},
 					},
@@ -99,6 +103,7 @@ func resourceAwsEMRCluster() *schema.Resource {
 			"bootstrap_action": &schema.Schema{
 				Type:     schema.TypeSet,
 				Optional: true,
+				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"name": &schema.Schema{
@@ -121,16 +126,18 @@ func resourceAwsEMRCluster() *schema.Resource {
 			"tags": tagsSchema(),
 			"configurations": &schema.Schema{
 				Type:     schema.TypeString,
+				ForceNew: true,
 				Optional: true,
 			},
 			"service_role": &schema.Schema{
-				Type: schema.TypeString,
-				// TODO: should be force new?
+				Type:     schema.TypeString,
+				ForceNew: true,
 				Required: true,
 			},
 			"visible_to_all_users": &schema.Schema{
 				Type:     schema.TypeBool,
 				Optional: true,
+				ForceNew: true,
 				Default:  true,
 			},
 		},
@@ -149,17 +156,46 @@ func resourceAwsEMRClusterCreate(d *schema.ResourceData, meta interface{}) error
 	coreInstanceCount := d.Get("core_instance_count").(int)
 
 	applications := d.Get("applications").(*schema.Set).List()
-	var userKey, subnet, extraMasterSecGrp, extraSlaveSecGrp, emrMasterSecGrp, emrSlaveSecGrp, instanceProfile string
 
+	instanceConfig := &emr.JobFlowInstancesConfig{
+		MasterInstanceType: aws.String(masterInstanceType),
+		SlaveInstanceType:  aws.String(coreInstanceType),
+		InstanceCount:      aws.Int64(int64(coreInstanceCount)),
+		// Default values that we can open up in the future
+		KeepJobFlowAliveWhenNoSteps: aws.Bool(true),
+		TerminationProtected:        aws.Bool(false),
+	}
+
+	var instanceProfile string
 	if a, ok := d.GetOk("ec2_attributes"); ok {
 		ec2Attributes := a.([]interface{})
 		attributes := ec2Attributes[0].(map[string]interface{})
-		userKey = attributes["key_name"].(string)
-		subnet = attributes["subnet_id"].(string)
-		extraMasterSecGrp = attributes["additional_master_security_groups"].(string)
-		extraSlaveSecGrp = attributes["additional_slave_security_groups"].(string)
-		emrMasterSecGrp = attributes["emr_managed_master_security_group"].(string)
-		emrSlaveSecGrp = attributes["emr_managed_slave_security_group"].(string)
+
+		if v, ok := attributes["key_name"]; ok {
+			instanceConfig.Ec2KeyName = aws.String(v.(string))
+		}
+		if v, ok := attributes["subnet_id"]; ok {
+			instanceConfig.Ec2SubnetId = aws.String(v.(string))
+		}
+		if v, ok := attributes["subnet_id"]; ok {
+			instanceConfig.Ec2SubnetId = aws.String(v.(string))
+		}
+		if v, ok := attributes["additional_master_security_groups"]; ok {
+			instanceConfig.AdditionalMasterSecurityGroups = []*string{
+				aws.String(v.(string)),
+			}
+			if v, ok := attributes["additional_slave_security_groups"]; ok {
+				instanceConfig.AdditionalSlaveSecurityGroups = []*string{
+					aws.String(v.(string)),
+				}
+			}
+		}
+		if v, ok := attributes["emr_managed_master_security_group"]; ok {
+			instanceConfig.EmrManagedMasterSecurityGroup = aws.String(v.(string))
+		}
+		if v, ok := attributes["emr_managed_slave_security_group"]; ok {
+			instanceConfig.EmrManagedSlaveSecurityGroup = aws.String(v.(string))
+		}
 
 		if len(strings.TrimSpace(attributes["instance_profile"].(string))) != 0 {
 			instanceProfile = strings.TrimSpace(attributes["instance_profile"].(string))
@@ -169,23 +205,7 @@ func resourceAwsEMRClusterCreate(d *schema.ResourceData, meta interface{}) error
 	emrApps := expandApplications(applications)
 
 	params := &emr.RunJobFlowInput{
-		Instances: &emr.JobFlowInstancesConfig{
-			Ec2KeyName:                  aws.String(userKey),
-			Ec2SubnetId:                 aws.String(subnet),
-			InstanceCount:               aws.Int64(int64(coreInstanceCount + 1)),
-			KeepJobFlowAliveWhenNoSteps: aws.Bool(true),
-			MasterInstanceType:          aws.String(masterInstanceType),
-			SlaveInstanceType:           aws.String(coreInstanceType),
-			TerminationProtected:        aws.Bool(false),
-			AdditionalMasterSecurityGroups: []*string{
-				aws.String(extraMasterSecGrp),
-			},
-			AdditionalSlaveSecurityGroups: []*string{
-				aws.String(extraSlaveSecGrp),
-			},
-			EmrManagedMasterSecurityGroup: aws.String(emrMasterSecGrp),
-			EmrManagedSlaveSecurityGroup:  aws.String(emrSlaveSecGrp),
-		},
+		Instances:    instanceConfig,
 		Name:         aws.String(d.Get("name").(string)),
 		Applications: emrApps,
 
@@ -194,14 +214,14 @@ func resourceAwsEMRClusterCreate(d *schema.ResourceData, meta interface{}) error
 		VisibleToAllUsers: aws.Bool(d.Get("visible_to_all_users").(bool)),
 	}
 
+	if v, ok := d.GetOk("log_uri"); ok {
+		params.LogUri = aws.String(v.(string))
+	}
+
 	if instanceProfile != "" {
 		params.JobFlowRole = aws.String(instanceProfile)
 	}
 
-	if v, ok := d.GetOk("log_uri"); ok {
-		logUrl := v.(string)
-		params.LogUri = aws.String(logUrl)
-	}
 	if v, ok := d.GetOk("bootstrap_action"); ok {
 		bootstrapActions := v.(*schema.Set).List()
 		params.BootstrapActions = expandBootstrapActions(bootstrapActions)
@@ -223,7 +243,6 @@ func resourceAwsEMRClusterCreate(d *schema.ResourceData, meta interface{}) error
 		return err
 	}
 
-	log.Printf("[DEBUG] Created EMR Cluster done...")
 	d.SetId(*resp.JobFlowId)
 
 	log.Println(
@@ -240,7 +259,7 @@ func resourceAwsEMRClusterCreate(d *schema.ResourceData, meta interface{}) error
 
 	_, err = stateConf.WaitForState()
 	if err != nil {
-		return fmt.Errorf("[WARN] Error waiting for EMR Cluster state to be \"WAITING\": %s", err)
+		return fmt.Errorf("[WARN] Error waiting for EMR Cluster state to be \"WAITING\" or \"RUNNING\": %s", err)
 	}
 
 	return resourceAwsEMRClusterRead(d, meta)
