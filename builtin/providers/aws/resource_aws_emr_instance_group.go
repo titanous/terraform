@@ -78,6 +78,7 @@ func resourceAwsEMRInstanceGroupCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	log.Printf("[DEBUG] Created EMR task group finished: %#v", resp)
+	// if resp.InstanceGroupIds != nil
 	d.SetId(*resp.InstanceGroupIds[0])
 
 	return nil

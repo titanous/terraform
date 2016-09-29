@@ -50,10 +50,18 @@ func resourceAwsEMRCluster() *schema.Resource {
 				Optional: true,
 				Default:  0,
 			},
+			"cluster_state": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"log_uri": &schema.Schema{
 				Type:     schema.TypeString,
 				ForceNew: true,
 				Optional: true,
+			},
+			"master_public_dns": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
 			},
 			"applications": &schema.Schema{
 				Type:     schema.TypeSet,
@@ -283,20 +291,22 @@ func resourceAwsEMRClusterRead(d *schema.ResourceData, meta interface{}) error {
 		return nil
 	}
 
-	instance := resp.Cluster
+	cluster := resp.Cluster
 
-	if instance.Status != nil {
-		if *resp.Cluster.Status.State == "TERMINATED" {
+	if cluster.Status != nil {
+		if *cluster.Status.State == "TERMINATED" {
 			log.Printf("[DEBUG] EMR Cluster (%s) was TERMINATED already", d.Id())
 			d.SetId("")
 			return nil
 		}
 
-		if *resp.Cluster.Status.State == "TERMINATED_WITH_ERRORS" {
+		if *cluster.Status.State == "TERMINATED_WITH_ERRORS" {
 			log.Printf("[DEBUG] EMR Cluster (%s) was TERMINATED_WITH_ERRORS already", d.Id())
 			d.SetId("")
 			return nil
 		}
+
+		d.Set("cluster_state", cluster.Status.State)
 	}
 
 	instanceGroups, err := fetchAllEMRInstanceGroups(meta, d.Id())
@@ -307,6 +317,24 @@ func resourceAwsEMRClusterRead(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
+	d.Set("name", cluster.Name)
+	d.Set("service_role", cluster.ServiceRole)
+	d.Set("release_label", cluster.ReleaseLabel)
+	d.Set("log_uri", cluster.LogUri)
+	d.Set("master_public_dns", cluster.MasterPublicDnsName)
+	d.Set("visible_to_all_users", cluster.VisibleToAllUsers)
+	d.Set("tags", tagsToMapEMR(cluster.Tags))
+
+	if err := d.Set("applications", flattenApplications(cluster.Applications)); err != nil {
+		log.Printf("[ERR] Error setting EMR Applications for cluster (%s): %s", d.Id(), err)
+	}
+
+	// Configurations is a JSON document. It's built with an expand method but a
+	// simple string should be returned as JSON
+	// TODO need to flatten and json consolidate
+	if err := d.Set("configurations", cluster.Configurations); err != nil {
+		log.Printf("[ERR] Error setting EMR configurations for cluster (%s): %s", d.Id(), err)
+	}
 	return nil
 }
 
@@ -327,7 +355,7 @@ func resourceAwsEMRClusterUpdate(d *schema.ResourceData, meta interface{}) error
 		params := &emr.ModifyInstanceGroupsInput{
 			InstanceGroups: []*emr.InstanceGroupModifyConfig{
 				{
-					InstanceGroupId: aws.String(*coreGroup.Id),
+					InstanceGroupId: coreGroup.Id,
 					InstanceCount:   aws.Int64(int64(coreInstanceCount)),
 				},
 			},
@@ -414,6 +442,15 @@ func expandApplications(apps []interface{}) []*emr.Application {
 	return appOut
 }
 
+func flattenApplications(apps []*emr.Application) []interface{} {
+	appOut := make([]interface{}, 0, len(apps))
+
+	for _, app := range apps {
+		appOut = append(appOut, *app.Name)
+	}
+	return appOut
+}
+
 func loadGroups(d *schema.ResourceData, meta interface{}) ([]*emr.InstanceGroup, error) {
 	emrconn := meta.(*AWSClient).emrconn
 	reqGrps := &emr.ListInstanceGroupsInput{
@@ -443,6 +480,15 @@ func expandTags(m map[string]interface{}) []*emr.Tag {
 			Key:   aws.String(k),
 			Value: aws.String(v.(string)),
 		})
+	}
+
+	return result
+}
+
+func tagsToMapEMR(ts []*emr.Tag) map[string]string {
+	result := make(map[string]string)
+	for _, t := range ts {
+		result[*t.Key] = *t.Value
 	}
 
 	return result
