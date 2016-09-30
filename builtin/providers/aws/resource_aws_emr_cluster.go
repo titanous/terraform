@@ -331,9 +331,12 @@ func resourceAwsEMRClusterRead(d *schema.ResourceData, meta interface{}) error {
 
 	// Configurations is a JSON document. It's built with an expand method but a
 	// simple string should be returned as JSON
-	// TODO need to flatten and json consolidate
 	if err := d.Set("configurations", cluster.Configurations); err != nil {
 		log.Printf("[ERR] Error setting EMR configurations for cluster (%s): %s", d.Id(), err)
+	}
+
+	if err := d.Set("ec2_attributes", flattenEc2Attributes(cluster.Ec2InstanceAttributes)); err != nil {
+		log.Printf("[ERR] Error setting EMR Ec2 Attributes: %s", err)
 	}
 	return nil
 }
@@ -449,6 +452,35 @@ func flattenApplications(apps []*emr.Application) []interface{} {
 		appOut = append(appOut, *app.Name)
 	}
 	return appOut
+}
+
+func flattenEc2Attributes(ia *emr.Ec2InstanceAttributes) []interface{} {
+	attrs := map[string]interface{}{}
+
+	if ia.Ec2KeyName != nil {
+		attrs["key_name"] = *ia.Ec2KeyName
+	}
+	if ia.Ec2SubnetId != nil {
+		attrs["subnet_id"] = *ia.Ec2SubnetId
+	}
+	if ia.IamInstanceProfile != nil {
+		attrs["instance_profile"] = *ia.IamInstanceProfile
+	}
+	if ia.EmrManagedMasterSecurityGroup != nil {
+		attrs["emr_managed_master_security_group"] = *ia.EmrManagedMasterSecurityGroup
+	}
+	if ia.EmrManagedSlaveSecurityGroup != nil {
+		attrs["emr_managed_slave_security_group"] = *ia.EmrManagedSlaveSecurityGroup
+	}
+
+	if len(ia.AdditionalMasterSecurityGroups) > 0 {
+		attrs["additional_master_security_groups"] = aws.StringValueSlice(ia.AdditionalMasterSecurityGroups)
+	}
+	if len(ia.AdditionalSlaveSecurityGroups) > 0 {
+		attrs["additional_slave_security_groups"] = aws.StringValueSlice(ia.AdditionalSlaveSecurityGroups)
+	}
+
+	return []interface{}{ia}
 }
 
 func loadGroups(d *schema.ResourceData, meta interface{}) ([]*emr.InstanceGroup, error) {
