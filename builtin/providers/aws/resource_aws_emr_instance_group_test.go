@@ -105,7 +105,7 @@ resource "aws_emr_cluster" "tf-test-cluster" {
 
   master_instance_type = "m3.xlarge"
   core_instance_type   = "m3.xlarge"
-  core_instance_count  = 1
+  core_instance_count  = 2
 
   tags {
     role     = "rolename"
