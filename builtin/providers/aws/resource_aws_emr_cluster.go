@@ -354,6 +354,9 @@ func resourceAwsEMRClusterUpdate(d *schema.ResourceData, meta interface{}) error
 
 		coreInstanceCount := d.Get("core_instance_count").(int)
 		coreGroup := findGroup(groups, "CORE")
+		if coreGroup == nil {
+			return fmt.Errorf("[ERR] Error finding core group")
+		}
 
 		params := &emr.ModifyInstanceGroupsInput{
 			InstanceGroups: []*emr.InstanceGroupModifyConfig{
@@ -498,8 +501,10 @@ func loadGroups(d *schema.ResourceData, meta interface{}) ([]*emr.InstanceGroup,
 
 func findGroup(grps []*emr.InstanceGroup, typ string) *emr.InstanceGroup {
 	for _, grp := range grps {
-		if *grp.InstanceGroupType == typ {
-			return grp
+		if grp.InstanceGroupType != nil {
+			if *grp.InstanceGroupType == typ {
+				return grp
+			}
 		}
 	}
 	return nil
