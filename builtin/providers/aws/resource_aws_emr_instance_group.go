@@ -3,11 +3,13 @@ package aws
 import (
 	"errors"
 	"log"
+	"time"
 
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/emr"
+	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 )
 
@@ -46,6 +48,7 @@ func resourceAwsEMRInstanceGroup() *schema.Resource {
 			"name": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 		},
 	}
@@ -78,7 +81,9 @@ func resourceAwsEMRInstanceGroupCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	log.Printf("[DEBUG] Created EMR task group finished: %#v", resp)
-	// if resp.InstanceGroupIds != nil
+	if resp == nil || len(resp.InstanceGroupIds) == 0 {
+		return fmt.Errorf("Error creating instance groups: no instance group returned")
+	}
 	d.SetId(*resp.InstanceGroupIds[0])
 
 	return nil
@@ -190,14 +195,45 @@ func resourceAwsEMRInstanceGroupUpdate(d *schema.ResourceData, meta interface{})
 			},
 		},
 	}
-	resp, err := conn.ModifyInstanceGroups(params)
+
+	_, err := conn.ModifyInstanceGroups(params)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("[DEBUG] Modify EMR task group finished: %s", resp)
+	stateConf := &resource.StateChangeConf{
+		Pending:    []string{"PROVISIONING", "BOOTSTRAPPING", "RESIZING"},
+		Target:     []string{"RUNNING"},
+		Refresh:    instanceGroupStateRefresh(conn, d.Get("cluster_id").(string), d.Id()),
+		Timeout:    10 * time.Minute,
+		Delay:      10 * time.Second,
+		MinTimeout: 3 * time.Second,
+	}
 
-	return nil
+	_, err = stateConf.WaitForState()
+	if err != nil {
+		return fmt.Errorf(
+			"Error waiting for instance (%s) to terminate: %s", d.Id(), err)
+	}
+	// poll for new status
+
+	return resourceAwsEMRInstanceGroupRead(d, meta)
+}
+
+func instanceGroupStateRefresh(meta interface{}, clusterID, igID string) resource.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		group, err := fetchEMRInstanceGroup(meta, clusterID, igID)
+		if err != nil {
+			return nil, "Not Found", err
+		}
+
+		if group.Status == nil || group.Status.State == nil {
+			log.Printf("[WARN] ERM Instance Group found, but without state")
+			return nil, "Undefined", fmt.Errorf("Undefined EMR Cluster Instance Group state")
+		}
+
+		return group, *group.Status.State, nil
+	}
 }
 
 func resourceAwsEMRInstanceGroupDelete(d *schema.ResourceData, meta interface{}) error {
