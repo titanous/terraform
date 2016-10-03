@@ -17,103 +17,102 @@ func resourceArmSqlDatabase() *schema.Resource {
 		Delete: resourceArmSqlDatabaseDelete,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"location": &schema.Schema{
+			"location": {
 				Type:      schema.TypeString,
 				Required:  true,
 				ForceNew:  true,
 				StateFunc: azureRMNormalizeLocation,
 			},
 
-			"resource_group_name": &schema.Schema{
+			"resource_group_name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"server_name": &schema.Schema{
+			"server_name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"create_mode": &schema.Schema{
+			"create_mode": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "Default",
 			},
 
-			"source_database_id": &schema.Schema{
+			"source_database_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"restore_point_in_time": &schema.Schema{
+			"restore_point_in_time": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"edition": &schema.Schema{
-				Type:         schema.TypeString,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validateArmSqlDatabaseEdition,
-			},
-
-			"collation": &schema.Schema{
+			"edition": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"max_size_bytes": &schema.Schema{
+			"collation": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"requested_service_objective_id": &schema.Schema{
+			"max_size_bytes": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"requested_service_objective_name": &schema.Schema{
+			"requested_service_objective_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"source_database_deletion_date": &schema.Schema{
+			"requested_service_objective_name": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"elastic_pool_name": &schema.Schema{
+			"source_database_deletion_date": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"encryption": &schema.Schema{
+			"elastic_pool_name": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+
+			"encryption": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"creation_date": &schema.Schema{
+			"creation_date": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"default_secondary_location": &schema.Schema{
+			"default_secondary_location": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -241,17 +240,4 @@ func resourceArmSqlDatabaseDelete(d *schema.ResourceData, meta interface{}) erro
 	}
 
 	return nil
-}
-
-func validateArmSqlDatabaseEdition(v interface{}, k string) (ws []string, errors []error) {
-	editions := map[string]bool{
-		"Basic":    true,
-		"Standard": true,
-		"Premium":  true,
-	}
-
-	if !editions[v.(string)] {
-		errors = append(errors, fmt.Errorf("SQL Database Edition can only be Basic, Standard or Premium"))
-	}
-	return
 }
