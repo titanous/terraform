@@ -391,7 +391,7 @@ func resourceAwsEMRClusterUpdate(d *schema.ResourceData, meta interface{}) error
 		Refresh:    resourceAwsEMRClusterStateRefreshFunc(d, meta),
 		Timeout:    40 * time.Minute,
 		MinTimeout: 10 * time.Second,
-		Delay:      5 * time.Second, // Wait 30 secs before starting
+		Delay:      5 * time.Second,
 	}
 
 	_, err := stateConf.WaitForState()
