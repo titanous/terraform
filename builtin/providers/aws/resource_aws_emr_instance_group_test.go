@@ -307,7 +307,7 @@ EOT
 }
 
 resource "aws_iam_instance_profile" "emr_profile" {
-  name  = "emr_profile"
+  name  = "emr_profile_%d"
   roles = ["${aws_iam_role.iam_emr_profile_role.name}"]
 }
 
@@ -352,5 +352,5 @@ resource "aws_iam_policy" "iam_emr_profile_policy" {
     }]
 }
 EOT
-}`, r, r, r, r, r)
+}`, r, r, r, r, r, r)
 }
