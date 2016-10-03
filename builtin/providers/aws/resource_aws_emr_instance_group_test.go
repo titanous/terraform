@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform/terraform"
 )
 
-func TestAccAWSEmrInstanceGroup_basic(t *testing.T) {
+func TestAccAWSEMRInstanceGroup_basic(t *testing.T) {
 	var ig emr.InstanceGroup
 	rInt := acctest.RandInt()
 	resource.Test(t, resource.TestCase{

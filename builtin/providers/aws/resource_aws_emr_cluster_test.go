@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform/terraform"
 )
 
-func TestAccAWSEmrCluster_basic(t *testing.T) {
+func TestAccAWSEMRCluster_basic(t *testing.T) {
 	var jobFlow emr.RunJobFlowOutput
 	r := acctest.RandInt()
 	resource.Test(t, resource.TestCase{
