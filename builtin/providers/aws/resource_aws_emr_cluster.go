@@ -188,16 +188,23 @@ func resourceAwsEMRClusterCreate(d *schema.ResourceData, meta interface{}) error
 		if v, ok := attributes["subnet_id"]; ok {
 			instanceConfig.Ec2SubnetId = aws.String(v.(string))
 		}
+
 		if v, ok := attributes["additional_master_security_groups"]; ok {
-			instanceConfig.AdditionalMasterSecurityGroups = []*string{
-				aws.String(v.(string)),
+			strSlice := strings.Split(v.(string), ",")
+			for i, s := range strSlice {
+				strSlice[i] = strings.TrimSpace(s)
 			}
-			if v, ok := attributes["additional_slave_security_groups"]; ok {
-				instanceConfig.AdditionalSlaveSecurityGroups = []*string{
-					aws.String(v.(string)),
-				}
-			}
+			instanceConfig.AdditionalMasterSecurityGroups = aws.StringSlice(strSlice)
 		}
+
+		if v, ok := attributes["additional_slave_security_groups"]; ok {
+			strSlice := strings.Split(v.(string), ",")
+			for i, s := range strSlice {
+				strSlice[i] = strings.TrimSpace(s)
+			}
+			instanceConfig.AdditionalSlaveSecurityGroups = aws.StringSlice(strSlice)
+		}
+
 		if v, ok := attributes["emr_managed_master_security_group"]; ok {
 			instanceConfig.EmrManagedMasterSecurityGroup = aws.String(v.(string))
 		}
@@ -375,6 +382,23 @@ func resourceAwsEMRClusterUpdate(d *schema.ResourceData, meta interface{}) error
 		log.Printf("[DEBUG] Modify EMR Cluster done...")
 	}
 
+	log.Println(
+		"[INFO] Waiting for EMR Cluster to be available")
+
+	stateConf := &resource.StateChangeConf{
+		Pending:    []string{"STARTING", "BOOTSTRAPPING"},
+		Target:     []string{"WAITING", "RUNNING"},
+		Refresh:    resourceAwsEMRClusterStateRefreshFunc(d, meta),
+		Timeout:    40 * time.Minute,
+		MinTimeout: 10 * time.Second,
+		Delay:      5 * time.Second, // Wait 30 secs before starting
+	}
+
+	_, err := stateConf.WaitForState()
+	if err != nil {
+		return fmt.Errorf("[WARN] Error waiting for EMR Cluster state to be \"WAITING\" or \"RUNNING\" after modification: %s", err)
+	}
+
 	return resourceAwsEMRClusterRead(d, meta)
 }
 
@@ -457,8 +481,9 @@ func flattenApplications(apps []*emr.Application) []interface{} {
 	return appOut
 }
 
-func flattenEc2Attributes(ia *emr.Ec2InstanceAttributes) []interface{} {
+func flattenEc2Attributes(ia *emr.Ec2InstanceAttributes) []map[string]interface{} {
 	attrs := map[string]interface{}{}
+	result := make([]map[string]interface{}, 0)
 
 	if ia.Ec2KeyName != nil {
 		attrs["key_name"] = *ia.Ec2KeyName
@@ -477,13 +502,17 @@ func flattenEc2Attributes(ia *emr.Ec2InstanceAttributes) []interface{} {
 	}
 
 	if len(ia.AdditionalMasterSecurityGroups) > 0 {
-		attrs["additional_master_security_groups"] = aws.StringValueSlice(ia.AdditionalMasterSecurityGroups)
+		strs := aws.StringValueSlice(ia.AdditionalMasterSecurityGroups)
+		attrs["additional_master_security_groups"] = strings.Join(strs, ",")
 	}
 	if len(ia.AdditionalSlaveSecurityGroups) > 0 {
-		attrs["additional_slave_security_groups"] = aws.StringValueSlice(ia.AdditionalSlaveSecurityGroups)
+		strs := aws.StringValueSlice(ia.AdditionalSlaveSecurityGroups)
+		attrs["additional_slave_security_groups"] = strings.Join(strs, ",")
 	}
 
-	return []interface{}{ia}
+	result = append(result, attrs)
+
+	return result
 }
 
 func loadGroups(d *schema.ResourceData, meta interface{}) ([]*emr.InstanceGroup, error) {

@@ -183,10 +183,6 @@ func resourceAwsEMRInstanceGroupUpdate(d *schema.ResourceData, meta interface{})
 	log.Printf("[DEBUG] Modify EMR task group")
 	instanceCount := d.Get("instance_count").(int)
 
-	if d.HasChange("name") {
-		return fmt.Errorf("[WARN] Error updating task group, change name is not supported by api")
-	}
-
 	params := &emr.ModifyInstanceGroupsInput{
 		InstanceGroups: []*emr.InstanceGroupModifyConfig{
 			{
@@ -215,7 +211,6 @@ func resourceAwsEMRInstanceGroupUpdate(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf(
 			"Error waiting for instance (%s) to terminate: %s", d.Id(), err)
 	}
-	// poll for new status
 
 	return resourceAwsEMRInstanceGroupRead(d, meta)
 }
