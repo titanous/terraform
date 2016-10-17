@@ -17,7 +17,7 @@ func resourceArmLoadBalancerRule() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceArmLoadBalancerRuleCreate,
 		Read:   resourceArmLoadBalancerRuleRead,
-		Update: resourceArmLoadBalancerRuleCreate,
+		Update: resourceArmLoadBalancerRuleUpdate,
 		Delete: resourceArmLoadBalancerRuleDelete,
 
 		Schema: map[string]*schema.Schema{
@@ -106,6 +106,14 @@ func resourceArmLoadBalancerRule() *schema.Resource {
 }
 
 func resourceArmLoadBalancerRuleCreate(d *schema.ResourceData, meta interface{}) error {
+	return resourceArmLoadBalancerRuleCreateOrUpdate(d, meta, false)
+}
+
+func resourceArmLoadBalancerRuleUpdate(d *schema.ResourceData, meta interface{}) error {
+	return resourceArmLoadBalancerRuleCreateOrUpdate(d, meta, true)
+}
+
+func resourceArmLoadBalancerRuleCreateOrUpdate(d *schema.ResourceData, meta interface{}, update bool) error {
 	client := meta.(*ArmClient)
 	lbClient := client.loadBalancerClient
 
@@ -119,9 +127,16 @@ func resourceArmLoadBalancerRuleCreate(d *schema.ResourceData, meta interface{})
 		return nil
 	}
 
-	_, _, exists = findLoadBalancerRuleByName(loadBalancer, d.Get("name").(string))
-	if exists {
+	_, existingIdx, exists := findLoadBalancerRuleByName(loadBalancer, d.Get("name").(string))
+	if exists && !update {
 		return fmt.Errorf("A LoadBalancer Rule with name %q already exists.", d.Get("name").(string))
+	}
+
+	rules := *loadBalancer.Properties.LoadBalancingRules
+	if existingIdx > -1 {
+		// delete rule we are replacing
+		rules[existingIdx] = rules[len(rules)-1]
+		rules = rules[:len(rules)-1]
 	}
 
 	newLbRule, err := expandAzureRmLoadBalancerRule(d, loadBalancer)
@@ -129,8 +144,8 @@ func resourceArmLoadBalancerRuleCreate(d *schema.ResourceData, meta interface{})
 		return errwrap.Wrapf("Error Exanding LoadBalancer Rule {{err}}", err)
 	}
 
-	lbRules := append(*loadBalancer.Properties.LoadBalancingRules, *newLbRule)
-	loadBalancer.Properties.LoadBalancingRules = &lbRules
+	rules = append(rules, *newLbRule)
+	loadBalancer.Properties.LoadBalancingRules = &rules
 	resGroup, loadBalancerName, err := resourceGroupAndLBNameFromId(d.Get("loadbalancer_id").(string))
 	if err != nil {
 		return errwrap.Wrapf("Error Getting LoadBalancer Name and Group: {{err}}", err)
@@ -149,8 +164,6 @@ func resourceArmLoadBalancerRuleCreate(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf("Cannot read LoadBalancer %s (resource group %s) ID", loadBalancerName, resGroup)
 	}
 
-	d.SetId(*read.ID)
-
 	log.Printf("[DEBUG] Waiting for LoadBalancer (%s) to become available", loadBalancerName)
 	stateConf := &resource.StateChangeConf{
 		Pending: []string{"Accepted", "Updating"},
@@ -166,7 +179,7 @@ func resourceArmLoadBalancerRuleCreate(d *schema.ResourceData, meta interface{})
 }
 
 func resourceArmLoadBalancerRuleRead(d *schema.ResourceData, meta interface{}) error {
-	loadBalancer, exists, err := retrieveLoadBalancerById(d.Id(), meta)
+	loadBalancer, exists, err := retrieveLoadBalancerById(d.Get("loadbalancer_id").(string), meta)
 	if err != nil {
 		return errwrap.Wrapf("Error Getting LoadBalancer By ID {{err}}", err)
 	}
@@ -179,6 +192,7 @@ func resourceArmLoadBalancerRuleRead(d *schema.ResourceData, meta interface{}) e
 	configs := *loadBalancer.Properties.LoadBalancingRules
 	for _, config := range configs {
 		if *config.Name == d.Get("name").(string) {
+			d.SetId(*config.ID)
 			d.Set("name", config.Name)
 
 			d.Set("protocol", config.Properties.Protocol)
